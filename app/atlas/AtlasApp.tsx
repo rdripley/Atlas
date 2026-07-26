@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { calculateCapacity, formatMinutes } from "./capacity";
 import { planningConversation } from "./conversations";
 import { inferThought } from "./inference";
@@ -51,30 +51,34 @@ function Header({
   profile,
   onProfile,
   onSettings,
+  fixedProfile,
 }: {
   profile: Profile;
   onProfile: (profile: Profile) => void;
   onSettings: () => void;
+  fixedProfile?: Profile;
 }) {
   return (
     <header className="topbar">
-      <button className="brand" onClick={() => onProfile("planner")} aria-label="Atlas home">
+      <button className="brand" onClick={() => onProfile(profile)} aria-label="Atlas home">
         <span className="brand-mark">A</span>
         <span>Atlas</span>
       </button>
       <div className="header-actions">
-        <label className="profile-switch">
-          <span className="sr-only">Active profile</span>
-          <select value={profile} onChange={(event) => onProfile(event.target.value as Profile)}>
-            <option value="planner">Russ · Planner</option>
-            <option value="requester">Andrea · Requester</option>
-          </select>
-        </label>
-        {profile === "planner" && (
-          <button className="icon-button" onClick={onSettings} aria-label="Demo settings">
-            ⚙
-          </button>
+        {fixedProfile ? (
+          <span className="profile-label">{fixedProfile === "planner" ? "Russ · Planner" : "Andrea · Requester"}</span>
+        ) : (
+          <label className="profile-switch">
+            <span className="sr-only">Active profile</span>
+            <select value={profile} onChange={(event) => onProfile(event.target.value as Profile)}>
+              <option value="planner">Russ · Planner</option>
+              <option value="requester">Andrea · Requester</option>
+            </select>
+          </label>
         )}
+        <button className="icon-button" onClick={onSettings} aria-label="Atlas settings">
+          ⚙
+        </button>
       </div>
     </header>
   );
@@ -726,14 +730,34 @@ function SettingsScreen({
   state,
   onReset,
   onNavigate,
+  account,
 }: {
   state: AtlasState;
   onReset: () => void;
   onNavigate: (screen: Screen) => void;
+  account?: AtlasAccount;
 }) {
   return (
     <>
-      <ScreenHeading eyebrow="Prototype controls" title="Demo settings" description="Calendar and state are simulated on this device." />
+      <ScreenHeading eyebrow="Household account" title="Atlas settings" description="Your household data is private and shared across signed-in devices." />
+      {account && (
+        <section className="settings-card">
+          <h2>{account.householdName}</h2>
+          <ul>
+            <li><span>Signed in</span><strong>{account.displayName}</strong></li>
+            <li><span>Email</span><strong>{account.email}</strong></li>
+            <li><span>Cloud sync</span><strong>{account.syncStatus}</strong></li>
+          </ul>
+          {state.profile === "planner" && account.inviteCode && (
+            <div className="invite-code">
+              <span>Andrea’s invite code</span>
+              <strong>{account.inviteCode}</strong>
+              <p>Andrea will enter this after creating her own Atlas account.</p>
+            </div>
+          )}
+          <button className="secondary-button wide-button" onClick={account.onSignOut}>Sign out</button>
+        </section>
+      )}
       <section className="settings-card">
         <h2>Simulated calendar</h2>
         <ul>
@@ -745,7 +769,7 @@ function SettingsScreen({
         </ul>
       </section>
       <section className="settings-card">
-        <h2>Saved locally</h2>
+        <h2>{account ? "Saved to your household" : "Saved locally"}</h2>
         <p>{state.thoughts.length} thoughts · {state.tasks.length} tasks · {state.projects[0].parkingHistory.length} parking points · {state.corrections.length} learned corrections</p>
       </section>
       <div className="settings-links">
@@ -757,15 +781,35 @@ function SettingsScreen({
   );
 }
 
-export default function AtlasApp() {
-  const [state, setState] = useState<AtlasState>(() => createSeedState());
-  const [hydrated, setHydrated] = useState(false);
+export interface AtlasAccount {
+  displayName: string;
+  email: string;
+  householdName: string;
+  inviteCode: string;
+  syncStatus: string;
+  onSignOut: () => void;
+}
+
+interface AtlasAppProps {
+  initialState?: AtlasState;
+  fixedProfile?: Profile;
+  onStateChange?: (state: AtlasState) => void;
+  account?: AtlasAccount;
+}
+
+export default function AtlasApp({ initialState, fixedProfile, onStateChange, account }: AtlasAppProps) {
+  const [state, setState] = useState<AtlasState>(() => initialState
+    ? { ...initialState, profile: fixedProfile ?? initialState.profile }
+    : createSeedState());
+  const [hydrated, setHydrated] = useState(Boolean(initialState));
   const [screen, setScreen] = useState<Screen>("home");
   const [tradeoff, setTradeoff] = useState(false);
   const [parking, setParking] = useState(false);
   const [toast, setToast] = useState("");
+  const initialCloudState = useRef(initialState);
 
   useEffect(() => {
+    if (initialCloudState.current) return;
     const frame = window.requestAnimationFrame(() => {
       setState(loadState());
       setHydrated(true);
@@ -774,8 +818,21 @@ export default function AtlasApp() {
   }, []);
 
   useEffect(() => {
-    if (hydrated) saveState(state);
-  }, [state, hydrated]);
+    if (!initialState) return;
+    setState((current) => {
+      const next = { ...initialState, profile: fixedProfile ?? current.profile };
+      return JSON.stringify(current) === JSON.stringify(next) ? current : next;
+    });
+  }, [fixedProfile, initialState]);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (onStateChange) {
+      onStateChange(state);
+    } else {
+      saveState(state);
+    }
+  }, [hydrated, onStateChange, state]);
 
   const pending = useMemo(
     () => state.thoughts.filter((thought) => thought.status === "Captured").length,
@@ -787,8 +844,9 @@ export default function AtlasApp() {
   }
 
   function switchProfile(profile: Profile) {
-    updateState((current) => ({ ...current, profile }));
-    setScreen(profile === "planner" ? (pending > 0 ? "inbox" : "home") : "capture");
+    const nextProfile = fixedProfile ?? profile;
+    updateState((current) => ({ ...current, profile: nextProfile }));
+    setScreen(nextProfile === "planner" ? (pending > 0 ? "inbox" : "home") : "capture");
     setParking(false);
   }
 
@@ -950,7 +1008,7 @@ export default function AtlasApp() {
   return (
     <div className={screen === "focus" ? "app focus-app" : "app"}>
       {screen !== "focus" && !parking && (
-        <Header profile={state.profile} onProfile={switchProfile} onSettings={() => navigate("settings")} />
+        <Header profile={state.profile} onProfile={switchProfile} onSettings={() => navigate("settings")} fixedProfile={fixedProfile} />
       )}
       {toast && (
         <button className="toast" onClick={() => setToast("")} aria-label="Dismiss notification">
@@ -963,7 +1021,16 @@ export default function AtlasApp() {
         ) : (
           <>
             {state.profile === "requester" ? (
-              screen === "submitted" ? <SubmittedScreen thoughts={state.thoughts} /> : <CaptureScreen profile="requester" corrections={state.corrections} onCapture={capture} />
+              screen === "settings"
+                ? <SettingsScreen state={state} account={account} onNavigate={navigate} onReset={() => {
+                    const reset = resetState();
+                    setState({ ...reset, profile: fixedProfile ?? reset.profile });
+                    setToast("Demo data reset.");
+                    navigate("capture");
+                  }} />
+                : screen === "submitted"
+                  ? <SubmittedScreen thoughts={state.thoughts} />
+                  : <CaptureScreen profile="requester" corrections={state.corrections} onCapture={capture} />
             ) : (
               <>
                 {screen === "home" && <HomeScreen state={state} onNavigate={navigate} onStart={startTask} />}
@@ -1009,7 +1076,12 @@ export default function AtlasApp() {
                     onUrgent={handleUrgent}
                   />
                 )}
-                {screen === "settings" && <SettingsScreen state={state} onNavigate={navigate} onReset={() => { setState(resetState()); setToast("Demo data reset."); navigate("home"); }} />}
+                {screen === "settings" && <SettingsScreen state={state} account={account} onNavigate={navigate} onReset={() => {
+                  const reset = resetState();
+                  setState({ ...reset, profile: fixedProfile ?? reset.profile });
+                  setToast("Demo data reset.");
+                  navigate("home");
+                }} />}
               </>
             )}
           </>

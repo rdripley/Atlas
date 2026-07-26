@@ -16,5 +16,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["app/main.tsx", "app/atlas/**/*.ts", "app/atlas/**/*.tsx", "vite.config.ts"]
+  "include": ["app/main.tsx", "app/supabase.ts", "app/**/*.d.ts", "app/atlas/**/*.ts", "app/atlas/**/*.tsx", "vite.config.ts"]
 }

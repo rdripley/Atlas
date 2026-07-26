@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import AtlasApp from "./atlas/AtlasApp";
+import CloudGate from "./atlas/CloudGate";
 import "./globals.css";
 
 const root = document.getElementById("root");
@@ -11,6 +11,6 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <AtlasApp />
+    <CloudGate />
   </StrictMode>,
 );
