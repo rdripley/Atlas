@@ -29,4 +29,4 @@ Prototype data persists in `localStorage`. Use Demo settings → Reset Demo Data
 
 ## GitHub Pages
 
-Pushes to `main` deploy automatically to `https://rdripley.github.io/Atlas/`.
+The static build is published from the `gh-pages` branch at `https://rdripley.github.io/Atlas/`.
