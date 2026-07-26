@@ -265,7 +265,6 @@ function CaptureScreen({
           onChange={(event) => setText(event.target.value)}
           placeholder="Type a request or thought…"
           rows={4}
-          autoFocus
         />
         <fieldset className="timing-options">
           <legend>When? <span>Optional</span></legend>
@@ -285,8 +284,20 @@ function CaptureScreen({
         <button className="primary-button" type="submit">Capture thought</button>
       </form>
       <section className="widget-preview">
-        <p className="eyebrow">Quick-capture widget</p>
-        <div><span>What’s on your mind?</span><button onClick={() => setText("We need milk.")}>+</button></div>
+        <p className="eyebrow">Home-screen widget preview</p>
+        <div>
+          <span>Tap + to load a sample into Capture</span>
+          <button
+            type="button"
+            aria-label="Load a sample capture"
+            onClick={() => {
+              setMode("text");
+              setText("We need milk.");
+            }}
+          >
+            +
+          </button>
+        </div>
       </section>
       <p className="privacy-note">Saved on this device. Predictions are deterministic and use {corrections.length} learned correction{corrections.length === 1 ? "" : "s"}.</p>
     </>
@@ -777,7 +788,7 @@ export default function AtlasApp() {
 
   function switchProfile(profile: Profile) {
     updateState((current) => ({ ...current, profile }));
-    setScreen(profile === "planner" ? "home" : "capture");
+    setScreen(profile === "planner" ? (pending > 0 ? "inbox" : "home") : "capture");
     setParking(false);
   }
 
