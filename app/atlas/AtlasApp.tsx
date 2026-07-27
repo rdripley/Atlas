@@ -6,7 +6,7 @@ import { planningConversation } from "./conversations";
 import { inferThought } from "./inference";
 import { effortWarning, recommendedPlan } from "./scheduling";
 import { createSeedState } from "./seed";
-import { loadState, resetState, saveState } from "./storage";
+import { loadState, saveState } from "./storage";
 import type {
   AtlasState,
   FocusSession,
@@ -437,9 +437,9 @@ function PlanScreen({
         </section>
       ) : view === "Now / Next / Later" ? (
         <section className="zoom-list">
-          {["Now", "Next", "Later"].map((label, index) => (
+          {state.tasks.length ? ["Now", "Next", "Later"].map((label, index) => (
             <div key={label}><span>{label}</span><TaskCard task={state.tasks[index] ?? state.tasks[0]} onStart={onStart} compact /></div>
-          ))}
+          )) : <div className="empty-state"><strong>No tasks yet.</strong><p>Capture a thought to begin building your plan.</p></div>}
         </section>
       ) : (
         <div className="day-plan">
@@ -457,7 +457,7 @@ function PlanScreen({
         </div>
       )}
 
-      <section className="conversation-card">
+      {state.tasks.length > 0 && <section className="conversation-card">
         <div className="atlas-avatar">A</div>
         {conversation === "approved" ? (
           <div><h2>Plan protected.</h2><p>The important work fits without overloading the evening.</p></div>
@@ -482,7 +482,7 @@ function PlanScreen({
             </div>
           </div>
         )}
-      </section>
+      </section>}
 
       <button className="secondary-button wide-button" onClick={onAddOptional}>Add nonurgent household task</button>
 
@@ -503,21 +503,26 @@ function PlanScreen({
 }
 
 function ProjectsScreen({ state, onOpen }: { state: AtlasState; onOpen: () => void }) {
+  const project = state.projects[0];
   return (
     <>
       <ScreenHeading eyebrow="Outcomes, not backlogs" title="Projects" description="Only the current and next steps stay visible." />
-      <article className="project-card" onClick={onOpen}>
-        <p className="eyebrow">Home · Active</p>
-        <h2>Patch hallway drywall</h2>
-        <p className="goal-copy">The hallway drywall is repaired, primed, and painted.</p>
-        <div className="project-steps">
-          <div><span>Current</span><strong>{state.projects[0].currentStep}</strong></div>
-          <div><span>Next</span><strong>{state.projects[0].nextStep}</strong></div>
-        </div>
-        <button className="text-button">Open project →</button>
-      </article>
+      {project ? (
+        <article className="project-card" onClick={onOpen}>
+          <p className="eyebrow">Home · Active</p>
+          <h2>{project.title}</h2>
+          <p className="goal-copy">{project.endGoal}</p>
+          <div className="project-steps">
+            <div><span>Current</span><strong>{project.currentStep}</strong></div>
+            <div><span>Next</span><strong>{project.nextStep}</strong></div>
+          </div>
+          <button className="text-button">Open project →</button>
+        </article>
+      ) : (
+        <div className="empty-state"><strong>No projects yet.</strong><p>Atlas will suggest a project when a captured thought needs multiple steps.</p></div>
+      )}
       <div className="more-grid">
-        <button onClick={() => onOpen()}>Projects <span>1 active</span></button>
+        <button onClick={() => project && onOpen()}>Projects <span>{state.projects.length} active</span></button>
         <button>Responsibilities <span>6 areas</span></button>
         <button>Reference <span>Saved context</span></button>
       </div>
@@ -535,6 +540,14 @@ function ProjectScreen({
   onStart: (task: Task) => void;
 }) {
   const project = state.projects[0];
+  if (!project) {
+    return (
+      <>
+        <button className="back-button" onClick={onBack}>← Projects</button>
+        <div className="empty-state"><strong>No project selected.</strong><p>Return to Projects to continue.</p></div>
+      </>
+    );
+  }
   const task = state.tasks.find((item) => item.projectId === project.id) ?? state.tasks[0];
   return (
     <>
@@ -552,9 +565,9 @@ function ProjectScreen({
         <div><span>Current step</span><strong>{project.currentStep}</strong></div>
         <div><span>Next step</span><strong>{project.nextStep}</strong></div>
       </section>
-      <button className="primary-button wide-button" onClick={() => onStart(task)}>
+      {task && <button className="primary-button wide-button" onClick={() => onStart(task)}>
         {task.status === "Parked" ? "Resume with saved context" : "Start current step"}
-      </button>
+      </button>}
       <div className="disclosure-stack">
         <details><summary>Remaining steps <span>{project.steps.length}</span></summary><ol>{project.steps.map((step) => <li key={step}>{step}</li>)}</ol></details>
         <details><summary>Tools <span>{project.tools.length}</span></summary><p>{project.tools.join(" · ")}</p></details>
@@ -728,12 +741,12 @@ function FocusScreen({
 
 function SettingsScreen({
   state,
-  onReset,
+  onClear,
   onNavigate,
   account,
 }: {
   state: AtlasState;
-  onReset: () => void;
+  onClear: () => void;
   onNavigate: (screen: Screen) => void;
   account?: AtlasAccount;
 }) {
@@ -786,13 +799,24 @@ function SettingsScreen({
       </section>
       <section className="settings-card">
         <h2>{account ? "Saved to your household" : "Saved locally"}</h2>
-        <p>{state.thoughts.length} thoughts · {state.tasks.length} tasks · {state.projects[0].parkingHistory.length} parking points · {state.corrections.length} learned corrections</p>
+        <p>{state.thoughts.length} thoughts · {state.tasks.length} tasks · {state.projects.reduce((total, project) => total + project.parkingHistory.length, 0)} parking points · {state.corrections.length} learned corrections</p>
       </section>
       <div className="settings-links">
         <button onClick={() => onNavigate("investments")}>Open Investments <span>→</span></button>
         <button onClick={() => onNavigate("projects")}>Open Projects <span>→</span></button>
       </div>
-      <button className="danger-button wide-button" onClick={onReset}>Reset Demo Data</button>
+      {state.profile === "planner" && (
+        <button
+          className="danger-button wide-button"
+          onClick={() => {
+            if (window.confirm("Clear all current thoughts, tasks, and projects? Your household and both accounts will stay connected.")) {
+              onClear();
+            }
+          }}
+        >
+          Clear demo content
+        </button>
+      )}
     </>
   );
 }
@@ -1038,10 +1062,17 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
           <>
             {state.profile === "requester" ? (
               screen === "settings"
-                ? <SettingsScreen state={state} account={account} onNavigate={navigate} onReset={() => {
-                    const reset = resetState();
-                    setState({ ...reset, profile: fixedProfile ?? reset.profile });
-                    setToast("Demo data reset.");
+                ? <SettingsScreen state={state} account={account} onNavigate={navigate} onClear={() => {
+                    setState((current) => ({
+                      ...current,
+                      thoughts: [],
+                      tasks: [],
+                      projects: [],
+                      corrections: [],
+                      focus: null,
+                      investments: current.investments.map((investment) => ({ ...investment, completedMinutes: 0 })),
+                    }));
+                    setToast("Demo content cleared. Your household is unchanged.");
                     navigate("capture");
                   }} />
                 : screen === "submitted"
@@ -1092,10 +1123,17 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
                     onUrgent={handleUrgent}
                   />
                 )}
-                {screen === "settings" && <SettingsScreen state={state} account={account} onNavigate={navigate} onReset={() => {
-                  const reset = resetState();
-                  setState({ ...reset, profile: fixedProfile ?? reset.profile });
-                  setToast("Demo data reset.");
+                {screen === "settings" && <SettingsScreen state={state} account={account} onNavigate={navigate} onClear={() => {
+                  setState((current) => ({
+                    ...current,
+                    thoughts: [],
+                    tasks: [],
+                    projects: [],
+                    corrections: [],
+                    focus: null,
+                    investments: current.investments.map((investment) => ({ ...investment, completedMinutes: 0 })),
+                  }));
+                  setToast("Demo content cleared. Your household is unchanged.");
                   navigate("home");
                 }} />}
               </>
