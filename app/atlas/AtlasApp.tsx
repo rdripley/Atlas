@@ -737,6 +737,19 @@ function SettingsScreen({
   onNavigate: (screen: Screen) => void;
   account?: AtlasAccount;
 }) {
+  const [inviteCopied, setInviteCopied] = useState(false);
+
+  async function copyInviteCode() {
+    if (!account?.inviteCode) return;
+    try {
+      await navigator.clipboard.writeText(account.inviteCode);
+      setInviteCopied(true);
+      window.setTimeout(() => setInviteCopied(false), 2000);
+    } catch {
+      window.prompt("Copy Andrea’s invite code", account.inviteCode);
+    }
+  }
+
   return (
     <>
       <ScreenHeading eyebrow="Household account" title="Atlas settings" description="Your household data is private and shared across signed-in devices." />
@@ -753,6 +766,9 @@ function SettingsScreen({
               <span>Andrea’s invite code</span>
               <strong>{account.inviteCode}</strong>
               <p>Andrea will enter this after creating her own Atlas account.</p>
+              <button type="button" className="secondary-button" onClick={copyInviteCode}>
+                {inviteCopied ? "Copied" : "Copy invite code"}
+              </button>
             </div>
           )}
           <button className="secondary-button wide-button" onClick={account.onSignOut}>Sign out</button>

@@ -28,6 +28,18 @@ interface MembershipRow {
   } | null;
 }
 
+function normalizeInviteCode(value: string) {
+  const characters = value
+    .toUpperCase()
+    .replaceAll("O", "0")
+    .replace(/[IL]/g, "1")
+    .replace(/[^A-F0-9]/g, "")
+    .slice(0, 8);
+  return characters.length > 4
+    ? `${characters.slice(0, 4)}-${characters.slice(4)}`
+    : characters;
+}
+
 function AtlasMark() {
   return <span className="auth-mark" aria-hidden="true">A</span>;
 }
@@ -155,7 +167,7 @@ function OnboardingScreen({ session, onReady }: { session: Session; onReady: () 
     } else {
       const { error } = await supabase.rpc("join_atlas_household", {
         p_display_name: displayName.trim(),
-        p_invite_code: inviteCode.trim().toUpperCase(),
+        p_invite_code: normalizeInviteCode(inviteCode),
       });
       if (error) {
         setMessage(error.message);
@@ -205,6 +217,7 @@ function OnboardingScreen({ session, onReady }: { session: Session; onReady: () 
                 value={inviteCode}
                 onChange={(event) => setInviteCode(event.target.value)}
               />
+              <span className="field-hint">You can paste the code with or without the hyphen. Atlas corrects common O/0 and I/1 mix-ups.</span>
             </label>
           )}
           <button className="primary-button" disabled={busy} type="submit">
