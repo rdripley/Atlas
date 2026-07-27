@@ -741,12 +741,10 @@ function FocusScreen({
 
 function SettingsScreen({
   state,
-  onClear,
   onNavigate,
   account,
 }: {
   state: AtlasState;
-  onClear: () => void;
   onNavigate: (screen: Screen) => void;
   account?: AtlasAccount;
 }) {
@@ -805,18 +803,6 @@ function SettingsScreen({
         <button onClick={() => onNavigate("investments")}>Open Investments <span>→</span></button>
         <button onClick={() => onNavigate("projects")}>Open Projects <span>→</span></button>
       </div>
-      {state.profile === "planner" && (
-        <button
-          className="danger-button wide-button"
-          onClick={() => {
-            if (window.confirm("Clear all current thoughts, tasks, and projects? Your household and both accounts will stay connected.")) {
-              onClear();
-            }
-          }}
-        >
-          Clear demo content
-        </button>
-      )}
     </>
   );
 }
@@ -1062,19 +1048,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
           <>
             {state.profile === "requester" ? (
               screen === "settings"
-                ? <SettingsScreen state={state} account={account} onNavigate={navigate} onClear={() => {
-                    setState((current) => ({
-                      ...current,
-                      thoughts: [],
-                      tasks: [],
-                      projects: [],
-                      corrections: [],
-                      focus: null,
-                      investments: current.investments.map((investment) => ({ ...investment, completedMinutes: 0 })),
-                    }));
-                    setToast("Demo content cleared. Your household is unchanged.");
-                    navigate("capture");
-                  }} />
+                ? <SettingsScreen state={state} account={account} onNavigate={navigate} />
                 : screen === "submitted"
                   ? <SubmittedScreen thoughts={state.thoughts} />
                   : <CaptureScreen profile="requester" corrections={state.corrections} onCapture={capture} />
@@ -1123,19 +1097,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
                     onUrgent={handleUrgent}
                   />
                 )}
-                {screen === "settings" && <SettingsScreen state={state} account={account} onNavigate={navigate} onClear={() => {
-                  setState((current) => ({
-                    ...current,
-                    thoughts: [],
-                    tasks: [],
-                    projects: [],
-                    corrections: [],
-                    focus: null,
-                    investments: current.investments.map((investment) => ({ ...investment, completedMinutes: 0 })),
-                  }));
-                  setToast("Demo content cleared. Your household is unchanged.");
-                  navigate("home");
-                }} />}
+                {screen === "settings" && <SettingsScreen state={state} account={account} onNavigate={navigate} />}
               </>
             )}
           </>
