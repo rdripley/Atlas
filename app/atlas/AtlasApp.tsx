@@ -68,6 +68,10 @@ function displayDate(date: string) {
   }).format(new Date(`${date}T12:00:00`));
 }
 
+function normalizedTaskText(text: string) {
+  return text.trim().toLowerCase().replace(/[.!?]+$/, "");
+}
+
 function confirmationFor(timing: Timing) {
   if (timing === "Urgent") return "Captured as urgent. The planner has been notified.";
   if (timing === "On the way home") return "Captured. This may be shown before the planner leaves work.";
@@ -162,10 +166,12 @@ function ScreenHeading({
 function TaskCard({
   task,
   onStart,
+  onComplete,
   compact = false,
 }: {
   task: Task;
   onStart?: (task: Task) => void;
+  onComplete?: (task: Task) => void;
   compact?: boolean;
 }) {
   return (
@@ -175,10 +181,19 @@ function TaskCard({
         <h3>{task.title}</h3>
         <p>{task.size} · {formatMinutes(task.minutes)} · {task.status}</p>
       </div>
-      {onStart && task.status !== "Completed" && (
-        <button className="text-button" onClick={() => onStart(task)}>
-          {task.status === "Parked" ? "Resume" : "Start"}
-        </button>
+      {task.status !== "Completed" && (onStart || onComplete) && (
+        <div className="task-actions">
+          {onStart && (
+            <button className="text-button" onClick={() => onStart(task)}>
+              {task.status === "Parked" ? "Resume" : "Start"}
+            </button>
+          )}
+          {onComplete && (
+            <button className="text-button complete-task-button" onClick={() => onComplete(task)}>
+              Complete
+            </button>
+          )}
+        </div>
       )}
     </article>
   );
@@ -188,10 +203,12 @@ function HomeScreen({
   state,
   onNavigate,
   onStart,
+  onComplete,
 }: {
   state: AtlasState;
   onNavigate: (screen: Screen) => void;
   onStart: (task: Task) => void;
+  onComplete: (task: Task) => void;
 }) {
   const today = localDateKey();
   const active = state.tasks.filter((task) => task.status !== "Completed" && taskIsForDate(task, today));
@@ -220,13 +237,13 @@ function HomeScreen({
       <section className="home-group">
         <div className="section-title"><h2>Responsibilities</h2><span>Required</span></div>
         {active.filter((task) => task.kind === "Responsibility").slice(0, 2).map((task) => (
-          <TaskCard key={task.id} task={task} onStart={onStart} compact />
+          <TaskCard key={task.id} task={task} onStart={onStart} onComplete={onComplete} compact />
         ))}
       </section>
 
       <section className="home-group protected-block">
         <div className="section-title"><h2>Protected investment</h2><span>Keep</span></div>
-        {later && <TaskCard task={later} onStart={onStart} compact />}
+        {later && <TaskCard task={later} onStart={onStart} onComplete={onComplete} compact />}
         <p className="protect-note">This time is protected capacity, not leftover time.</p>
       </section>
 
@@ -493,12 +510,14 @@ function InboxScheduleActions({
 function PlanScreen({
   state,
   onStart,
+  onComplete,
   onAddOptional,
   tradeoff,
   onResolveTradeoff,
 }: {
   state: AtlasState;
   onStart: (task: Task) => void;
+  onComplete: (task: Task) => void;
   onAddOptional: () => void;
   tradeoff: boolean;
   onResolveTradeoff: (move: boolean) => void;
@@ -544,7 +563,7 @@ function PlanScreen({
       ) : view === "Now / Next / Later" ? (
         <section className="zoom-list">
           {todayTasks.length ? ["Now", "Next", "Later"].map((label, index) => (
-            <div key={label}><span>{label}</span><TaskCard task={todayTasks[index] ?? todayTasks[0]} onStart={onStart} compact /></div>
+            <div key={label}><span>{label}</span><TaskCard task={todayTasks[index] ?? todayTasks[0]} onStart={onStart} onComplete={onComplete} compact /></div>
           )) : <div className="empty-state"><strong>No tasks yet.</strong><p>Capture a thought to begin building your plan.</p></div>}
         </section>
       ) : (
@@ -560,7 +579,7 @@ function PlanScreen({
             return (
               <section key={section} className="plan-section">
                 <div className="plan-time"><h2>{section}</h2><span>{section === "Workday" ? "8:00–5:00" : section === "On the way home" ? "5:00–5:30" : section === "Evening" ? "7:15–9:00" : ""}</span></div>
-                {tasks.length ? tasks.map((task) => <TaskCard key={task.id} task={task} onStart={onStart} compact />) : <div className="calendar-block">{section === "Workday" ? "Work · fixed commitment" : "No planned work"}</div>}
+                {tasks.length ? tasks.map((task) => <TaskCard key={task.id} task={task} onStart={onStart} onComplete={onComplete} compact />) : <div className="calendar-block">{section === "Workday" ? "Work · fixed commitment" : "No planned work"}</div>}
                 {section === "After work" && <div className="calendar-block">Dinner · 6:30–7:15 PM</div>}
               </section>
             );
@@ -571,7 +590,7 @@ function PlanScreen({
               {upcomingTasks.map((task) => (
                 <div key={task.id} className="dated-task">
                   <span>{displayDate(task.plannedFor!)}</span>
-                  <TaskCard task={task} compact />
+                  <TaskCard task={task} onComplete={onComplete} compact />
                 </div>
               ))}
             </section>
@@ -579,7 +598,7 @@ function PlanScreen({
           {wheneverTasks.length > 0 && (
             <section className="plan-section">
               <div className="plan-time"><h2>Whenever</h2><span>No date yet</span></div>
-              {wheneverTasks.map((task) => <TaskCard key={task.id} task={task} compact />)}
+              {wheneverTasks.map((task) => <TaskCard key={task.id} task={task} onComplete={onComplete} compact />)}
             </section>
           )}
         </div>
@@ -662,10 +681,12 @@ function ProjectScreen({
   state,
   onBack,
   onStart,
+  onComplete,
 }: {
   state: AtlasState;
   onBack: () => void;
   onStart: (task: Task) => void;
+  onComplete: (task: Task) => void;
 }) {
   const project = state.projects[0];
   if (!project) {
@@ -676,7 +697,7 @@ function ProjectScreen({
       </>
     );
   }
-  const task = state.tasks.find((item) => item.projectId === project.id) ?? state.tasks[0];
+  const task = state.tasks.find((item) => item.projectId === project.id && item.status !== "Completed");
   return (
     <>
       <button className="back-button" onClick={onBack}>← Projects</button>
@@ -693,9 +714,14 @@ function ProjectScreen({
         <div><span>Current step</span><strong>{project.currentStep}</strong></div>
         <div><span>Next step</span><strong>{project.nextStep}</strong></div>
       </section>
-      {task && <button className="primary-button wide-button" onClick={() => onStart(task)}>
-        {task.status === "Parked" ? "Resume with saved context" : "Start current step"}
-      </button>}
+      {task && (
+        <div className="project-task-actions">
+          <button className="primary-button" onClick={() => onStart(task)}>
+            {task.status === "Parked" ? "Resume with saved context" : "Start current step"}
+          </button>
+          <button className="secondary-button" onClick={() => onComplete(task)}>Complete task</button>
+        </div>
+      )}
       <div className="disclosure-stack">
         <details><summary>Remaining steps <span>{project.steps.length}</span></summary><ol>{project.steps.map((step) => <li key={step}>{step}</li>)}</ol></details>
         <details><summary>Tools <span>{project.tools.length}</span></summary><p>{project.tools.join(" · ")}</p></details>
@@ -710,13 +736,21 @@ function ProjectScreen({
   );
 }
 
-function InvestmentsScreen({ state, onStart }: { state: AtlasState; onStart: (task: Task) => void }) {
+function InvestmentsScreen({
+  state,
+  onStart,
+  onComplete,
+}: {
+  state: AtlasState;
+  onStart: (task: Task) => void;
+  onComplete: (task: Task) => void;
+}) {
   return (
     <>
       <ScreenHeading eyebrow="Protected capacity" title="Investments" description="Important work gets time before the evening fills up." />
       <div className="stack">
         {state.investments.map((investment) => {
-          const appTask = state.tasks.find((task) => task.kind === "Investment");
+          const appTask = state.tasks.find((task) => task.kind === "Investment" && task.status !== "Completed");
           return (
             <article className="investment-card" key={investment.id}>
               <div className="investment-heading"><span className="investment-symbol">◆</span><div><p className="eyebrow">Investment</p><h2>{investment.title}</h2></div></div>
@@ -728,7 +762,12 @@ function InvestmentsScreen({ state, onStart }: { state: AtlasState; onStart: (ta
                 <div><span>Next session</span><strong>{investment.nextSession}</strong></div>
               </div>
               <p className="example-actions">{investment.examples.join(" · ")}</p>
-              {investment.id === "app" && appTask && <button className="secondary-button" onClick={() => onStart(appTask)}>Start Build Atlas</button>}
+              {investment.id === "app" && appTask && (
+                <div className="investment-actions">
+                  <button className="secondary-button" onClick={() => onStart(appTask)}>Start Build Atlas</button>
+                  <button className="secondary-button" onClick={() => onComplete(appTask)}>Complete task</button>
+                </div>
+              )}
             </article>
           );
         })}
@@ -790,6 +829,7 @@ function ParkingWorkflow({
 
 function FocusScreen({
   state,
+  onComplete,
   onOverrun,
   onContinue,
   onParking,
@@ -797,6 +837,7 @@ function FocusScreen({
   onUrgent,
 }: {
   state: AtlasState;
+  onComplete: (task: Task) => void;
   onOverrun: () => void;
   onContinue: (minutes: number) => void;
   onParking: () => void;
@@ -840,6 +881,11 @@ function FocusScreen({
           <div><span>Planned stop</span><strong>8:30 PM</strong></div>
         </div>
         <div className="goal-line"><span>End goal</span><p>{task.endGoal ?? "Finish the action with enough context to stop safely."}</p></div>
+
+        <section className="focus-completion">
+          <button className="primary-button" onClick={() => onComplete(task)}>Finish task</button>
+          <p>Marks this complete and returns to Today. The optional steps can be skipped.</p>
+        </section>
 
         {!focus.overrun ? (
           <button className="secondary-button wide-button demo-control" onClick={onOverrun}>Simulate planned stopping time</button>
@@ -1060,6 +1106,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
       section,
       urgent: thought.urgent,
       plannedFor,
+      sourceThoughtId: thought.id,
       projectId: thought.prediction.project ? "drywall" : undefined,
     };
     updateState((current) => ({
@@ -1098,6 +1145,25 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
       tasks: current.tasks.map((item) => item.id === task.id ? { ...item, status: "In progress" } : item),
     }));
     navigate("focus");
+  }
+
+  function completeTask(task: Task, returnHome = false) {
+    const taskText = normalizedTaskText(task.title);
+    updateState((current) => ({
+      ...current,
+      focus: current.focus?.taskId === task.id ? null : current.focus,
+      tasks: current.tasks.map((item) =>
+        item.id === task.id ? { ...item, status: "Completed" as const } : item
+      ),
+      thoughts: current.thoughts.map((thought) =>
+        thought.id === task.sourceThoughtId ||
+        (thought.status !== "Completed" && normalizedTaskText(thought.text) === taskText)
+          ? { ...thought, status: "Completed" as const }
+          : thought
+      ),
+    }));
+    setToast(`${task.title} completed.`);
+    if (returnHome) navigate("home");
   }
 
   function parkTask(values: { completed: string; remains: string; nextAction: string; futureNote: string; resumeWindow: string }) {
@@ -1197,13 +1263,14 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
                   : <CaptureScreen profile="requester" corrections={state.corrections} onCapture={capture} />
             ) : (
               <>
-                {screen === "home" && <HomeScreen state={state} onNavigate={navigate} onStart={startTask} />}
+                {screen === "home" && <HomeScreen state={state} onNavigate={navigate} onStart={startTask} onComplete={completeTask} />}
                 {screen === "capture" && <CaptureScreen profile="planner" corrections={state.corrections} onCapture={capture} />}
                 {screen === "inbox" && <InboxScreen thoughts={state.thoughts} onPrediction={correctPrediction} onPlan={addThoughtToPlan} />}
                 {screen === "plan" && (
                   <PlanScreen
                     state={state}
                     onStart={startTask}
+                    onComplete={completeTask}
                     tradeoff={tradeoff}
                     onAddOptional={() => setTradeoff(true)}
                     onResolveTradeoff={(move) => {
@@ -1229,11 +1296,12 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
                   />
                 )}
                 {screen === "projects" && <ProjectsScreen state={state} onOpen={() => navigate("project")} />}
-                {screen === "project" && <ProjectScreen state={state} onBack={() => navigate("projects")} onStart={startTask} />}
-                {screen === "investments" && <InvestmentsScreen state={state} onStart={startTask} />}
+                {screen === "project" && <ProjectScreen state={state} onBack={() => navigate("projects")} onStart={startTask} onComplete={completeTask} />}
+                {screen === "investments" && <InvestmentsScreen state={state} onStart={startTask} onComplete={completeTask} />}
                 {screen === "focus" && (
                   <FocusScreen
                     state={state}
+                    onComplete={(task) => completeTask(task, true)}
                     onOverrun={() => updateState((current) => ({ ...current, focus: current.focus ? { ...current.focus, overrun: true, remainingMinutes: 0 } : null }))}
                     onContinue={(minutes) => updateState((current) => ({ ...current, focus: current.focus ? { ...current.focus, overrun: false, remainingMinutes: minutes } : null }))}
                     onParking={() => setParking(true)}

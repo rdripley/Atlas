@@ -51,6 +51,7 @@ export interface Task {
   futureNote?: string;
   urgent?: boolean;
   plannedFor?: string | null;
+  sourceThoughtId?: string;
 }
 
 export interface ParkingPoint {
