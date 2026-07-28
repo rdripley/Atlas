@@ -41,6 +41,33 @@ function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function localDateKey(offsetDays = 0) {
+  const date = new Date();
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + offsetDays);
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
+
+function taskIsForDate(task: Task, date: string) {
+  if (task.plannedFor === null) return false;
+  if (task.plannedFor) {
+    return task.plannedFor === date || (date === localDateKey() && task.plannedFor < date);
+  }
+  return task.section === "Tomorrow" ? date === localDateKey(1) : date === localDateKey();
+}
+
+function displayDate(date: string) {
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  }).format(new Date(`${date}T12:00:00`));
+}
+
 function confirmationFor(timing: Timing) {
   if (timing === "Urgent") return "Captured as urgent. The planner has been notified.";
   if (timing === "On the way home") return "Captured. This may be shown before the planner leaves work.";
@@ -166,8 +193,9 @@ function HomeScreen({
   onNavigate: (screen: Screen) => void;
   onStart: (task: Task) => void;
 }) {
-  const capacity = calculateCapacity(state.tasks);
-  const active = state.tasks.filter((task) => task.status !== "Completed" && task.section !== "Tomorrow");
+  const today = localDateKey();
+  const active = state.tasks.filter((task) => task.status !== "Completed" && taskIsForDate(task, today));
+  const capacity = calculateCapacity(active);
   const now = active.find((task) => task.status === "In progress") ?? active.find((task) => task.kind === "Responsibility");
   const next = active.find((task) => task.id !== now?.id && task.kind === "Responsibility");
   const later = active.find((task) => task.kind === "Investment");
@@ -334,7 +362,7 @@ function InboxScreen({
 }: {
   thoughts: Thought[];
   onPrediction: (thought: Thought, prediction: Prediction) => void;
-  onPlan: (thought: Thought) => void;
+  onPlan: (thought: Thought, plannedFor: string | null) => void;
 }) {
   const pending = thoughts.filter((thought) => thought.status === "Captured" || thought.status === "Seen");
   return (
@@ -386,14 +414,79 @@ function InboxScreen({
               </label>
             </div>
             {thought.prediction.project && <p className="project-link">Likely project · {thought.prediction.project}</p>}
-            <div className="card-actions">
-              <button className="primary-button" onClick={() => onPlan(thought)}>Add to today</button>
-              <button className="secondary-button">Details later</button>
-            </div>
+            <InboxScheduleActions thought={thought} onPlan={onPlan} />
           </article>
         ))}
       </div>
     </>
+  );
+}
+
+function InboxScheduleActions({
+  thought,
+  onPlan,
+}: {
+  thought: Thought;
+  onPlan: (thought: Thought, plannedFor: string | null) => void;
+}) {
+  type ScheduleChoice = "today" | "tomorrow" | "date" | "whenever";
+  const inferredChoice: ScheduleChoice =
+    thought.prediction.timing === "Whenever"
+      ? "whenever"
+      : thought.prediction.timing === "This week"
+        ? "tomorrow"
+        : "today";
+  const [choice, setChoice] = useState<ScheduleChoice>(inferredChoice);
+  const [chosenDate, setChosenDate] = useState(localDateKey(2));
+  const plannedFor =
+    choice === "whenever"
+      ? null
+      : choice === "today"
+        ? localDateKey()
+        : choice === "tomorrow"
+          ? localDateKey(1)
+          : chosenDate;
+  const buttonLabel =
+    choice === "whenever"
+      ? "Add to Whenever"
+      : choice === "today"
+        ? "Add to today"
+        : choice === "tomorrow"
+          ? "Add to tomorrow"
+          : `Add to ${displayDate(chosenDate)}`;
+
+  return (
+    <div className="schedule-actions">
+      <div className="schedule-fields">
+        <label>
+          Add to
+          <select value={choice} onChange={(event) => setChoice(event.target.value as ScheduleChoice)}>
+            <option value="today">Today</option>
+            <option value="tomorrow">Tomorrow</option>
+            <option value="date">Pick a date</option>
+            <option value="whenever">Whenever</option>
+          </select>
+        </label>
+        {choice === "date" && (
+          <label>
+            Date
+            <input
+              type="date"
+              min={localDateKey()}
+              value={chosenDate}
+              onChange={(event) => setChosenDate(event.target.value)}
+            />
+          </label>
+        )}
+      </div>
+      <button
+        className="primary-button"
+        disabled={choice === "date" && !chosenDate}
+        onClick={() => onPlan(thought, plannedFor)}
+      >
+        {buttonLabel}
+      </button>
+    </div>
   );
 }
 
@@ -412,10 +505,18 @@ function PlanScreen({
 }) {
   const [view, setView] = useState<"Day" | "Week" | "Now / Next / Later">("Day");
   const [conversation, setConversation] = useState<"recommend" | "why" | "approved">("recommend");
-  const capacity = calculateCapacity(state.tasks);
-  const recommendation = recommendedPlan(state.tasks, state.investments);
-  const warning = effortWarning(state.tasks);
+  const today = localDateKey();
+  const tomorrow = localDateKey(1);
+  const todayTasks = state.tasks.filter((task) => taskIsForDate(task, today));
+  const capacity = calculateCapacity(todayTasks);
+  const recommendation = recommendedPlan(todayTasks, state.investments);
+  const warning = effortWarning(todayTasks);
   const sections: Task["section"][] = ["Morning", "Workday", "On the way home", "After work", "Evening", "Tomorrow"];
+  const weekDates = Array.from({ length: 7 }, (_, index) => localDateKey(index));
+  const wheneverTasks = state.tasks.filter((task) => task.plannedFor === null && task.status !== "Completed");
+  const upcomingTasks = state.tasks
+    .filter((task) => task.plannedFor && task.plannedFor > tomorrow && task.status !== "Completed")
+    .sort((left, right) => (left.plannedFor ?? "").localeCompare(right.plannedFor ?? ""));
 
   return (
     <>
@@ -428,23 +529,33 @@ function PlanScreen({
 
       {view === "Week" ? (
         <section className="week-grid">
-          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, index) => (
-            <div key={day} className={index === 0 ? "today" : ""}>
-              <span>{day}</span><strong>{index === 0 ? "135m" : index === 5 ? "Open AM" : "60m"}</strong>
-              {index === 6 && <small>Family PM</small>}
-            </div>
-          ))}
+          {weekDates.map((date, index) => {
+            const tasks = state.tasks.filter((task) => task.status !== "Completed" && taskIsForDate(task, date));
+            const minutes = tasks.reduce((sum, task) => sum + task.minutes, 0);
+            return (
+              <div key={date} className={index === 0 ? "today" : ""}>
+                <span>{displayDate(date)}</span>
+                <strong>{tasks.length ? `${tasks.length} task${tasks.length === 1 ? "" : "s"} · ${formatMinutes(minutes)}` : "Open"}</strong>
+                {tasks[0] && <small>{tasks[0].title}</small>}
+              </div>
+            );
+          })}
         </section>
       ) : view === "Now / Next / Later" ? (
         <section className="zoom-list">
-          {state.tasks.length ? ["Now", "Next", "Later"].map((label, index) => (
-            <div key={label}><span>{label}</span><TaskCard task={state.tasks[index] ?? state.tasks[0]} onStart={onStart} compact /></div>
+          {todayTasks.length ? ["Now", "Next", "Later"].map((label, index) => (
+            <div key={label}><span>{label}</span><TaskCard task={todayTasks[index] ?? todayTasks[0]} onStart={onStart} compact /></div>
           )) : <div className="empty-state"><strong>No tasks yet.</strong><p>Capture a thought to begin building your plan.</p></div>}
         </section>
       ) : (
         <div className="day-plan">
           {sections.map((section) => {
-            const tasks = state.tasks.filter((task) => task.section === section && task.status !== "Completed");
+            const date = section === "Tomorrow" ? tomorrow : today;
+            const tasks = state.tasks.filter((task) =>
+              task.status !== "Completed" &&
+              taskIsForDate(task, date) &&
+              (section === "Tomorrow" || task.section === section)
+            );
             if (!tasks.length && !["Workday", "Morning"].includes(section)) return null;
             return (
               <section key={section} className="plan-section">
@@ -454,10 +565,27 @@ function PlanScreen({
               </section>
             );
           })}
+          {upcomingTasks.length > 0 && (
+            <section className="plan-section">
+              <div className="plan-time"><h2>Upcoming</h2><span>After tomorrow</span></div>
+              {upcomingTasks.map((task) => (
+                <div key={task.id} className="dated-task">
+                  <span>{displayDate(task.plannedFor!)}</span>
+                  <TaskCard task={task} compact />
+                </div>
+              ))}
+            </section>
+          )}
+          {wheneverTasks.length > 0 && (
+            <section className="plan-section">
+              <div className="plan-time"><h2>Whenever</h2><span>No date yet</span></div>
+              {wheneverTasks.map((task) => <TaskCard key={task.id} task={task} compact />)}
+            </section>
+          )}
         </div>
       )}
 
-      {state.tasks.length > 0 && <section className="conversation-card">
+      {todayTasks.length > 0 && <section className="conversation-card">
         <div className="atlas-avatar">A</div>
         {conversation === "approved" ? (
           <div><h2>Plan protected.</h2><p>The important work fits without overloading the evening.</p></div>
@@ -911,9 +1039,13 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
     setToast("Correction saved. Atlas will reuse it for similar inputs.");
   }
 
-  function addThoughtToPlan(thought: Thought) {
+  function addThoughtToPlan(thought: Thought, plannedFor: string | null) {
+    const today = localDateKey();
+    const tomorrow = localDateKey(1);
     const section =
-      thought.prediction.timing === "On the way home"
+      plannedFor === tomorrow
+        ? "Tomorrow"
+        : thought.prediction.timing === "On the way home" && plannedFor === today
         ? "On the way home"
         : thought.prediction.timing === "Urgent"
           ? "After work"
@@ -927,6 +1059,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
       kind: thought.prediction.type.includes("investment") ? "Investment" : "Responsibility",
       section,
       urgent: thought.urgent,
+      plannedFor,
       projectId: thought.prediction.project ? "drywall" : undefined,
     };
     updateState((current) => ({
@@ -934,7 +1067,15 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
       thoughts: current.thoughts.map((item) => item.id === thought.id ? { ...item, status: "Planned" } : item),
       tasks: [...current.tasks, task],
     }));
-    setToast(`${task.title} added to ${section}.`);
+    const destination =
+      plannedFor === null
+        ? "Whenever"
+        : plannedFor === today
+          ? "today"
+          : plannedFor === tomorrow
+            ? "tomorrow"
+            : displayDate(plannedFor);
+    setToast(`${task.title} added to ${destination}.`);
     navigate("plan");
   }
 
@@ -976,6 +1117,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
         status: "Ready" as const,
         kind: task.kind,
         section: "Tomorrow" as const,
+        plannedFor: localDateKey(1),
         projectId: task.projectId,
       }],
       projects: current.projects.map((project) =>
@@ -1009,6 +1151,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
       kind: "Responsibility",
       section: "After work",
       urgent: true,
+      plannedFor: localDateKey(),
       currentStep: "Stop the leak and prevent further damage",
       endGoal: "The leak is contained and the next repair action is clear.",
     };
@@ -1072,6 +1215,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
                         status: "Ready",
                         kind: "Responsibility",
                         section: move ? "Tomorrow" : "Evening",
+                        plannedFor: move ? localDateKey(1) : localDateKey(),
                       };
                       updateState((current) => ({
                         ...current,

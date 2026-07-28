@@ -50,6 +50,7 @@ export interface Task {
   endGoal?: string;
   futureNote?: string;
   urgent?: boolean;
+  plannedFor?: string | null;
 }
 
 export interface ParkingPoint {
