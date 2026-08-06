@@ -256,6 +256,14 @@ h2, h3 { letter-spacing: -0.025em; }
 .parking-steps textarea { resize: vertical; }
 .parking-steps .future-input { border-color: #cfb2dc; background: var(--accent-soft); }
 .settings-card h2 { font-size: 1rem; }
+.settings-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.settings-card-heading h2 { margin-bottom: 0; }
+.notification-settings > p { color: var(--muted); font-size: .85rem; line-height: 1.5; }
+.notification-settings > button { width: 100%; margin-top: .5rem; }
+.notification-status { padding: .35rem .6rem; border-radius: 999px; background: #eceeea; color: var(--muted); font-size: .7rem; font-weight: 800; }
+.notification-status.enabled { background: var(--green-soft); color: var(--green); }
+.notification-help { padding: .75rem; border-radius: .75rem; background: #fff4e5; color: #79511e !important; }
+.notification-message { margin-bottom: 0; color: var(--accent-dark) !important; font-weight: 700; }
 .settings-card ul { margin: 0; padding: 0; list-style: none; }
 .settings-card li { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-bottom: 1px solid var(--line); font-size: .8rem; }
 .settings-card li span, .settings-card p { color: var(--muted); }

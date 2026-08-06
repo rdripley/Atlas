@@ -13,4 +13,11 @@ export default tseslint.config(
       globals: globals.browser,
     },
   },
+  {
+    files: ["app/sw.js"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      globals: globals.serviceworker,
+    },
+  },
 );

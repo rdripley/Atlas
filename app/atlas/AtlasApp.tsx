@@ -17,6 +17,7 @@ import type {
   Thought,
   Timing,
 } from "./types";
+import type { NotificationStatus } from "./notifications";
 
 const timings: Timing[] = ["Urgent", "On the way home", "Today", "This week", "Whenever"];
 
@@ -932,6 +933,8 @@ function SettingsScreen({
   account?: AtlasAccount;
 }) {
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [notificationBusy, setNotificationBusy] = useState(false);
+  const [notificationMessage, setNotificationMessage] = useState("");
 
   async function copyInviteCode() {
     if (!account?.inviteCode) return;
@@ -944,9 +947,51 @@ function SettingsScreen({
     }
   }
 
+  async function toggleNotifications() {
+    if (!account) return;
+    setNotificationBusy(true);
+    setNotificationMessage("");
+    try {
+      if (account.notificationStatus === "enabled") {
+        await account.onDisableNotifications();
+        setNotificationMessage("Notifications turned off on this device.");
+      } else {
+        await account.onEnableNotifications();
+        setNotificationMessage("Notifications are ready on this device.");
+      }
+    } catch (error) {
+      setNotificationMessage(error instanceof Error ? error.message : "Atlas could not update notifications.");
+    } finally {
+      setNotificationBusy(false);
+    }
+  }
+
   return (
     <>
       <ScreenHeading eyebrow="Household account" title="Atlas settings" description="Your household data is private and shared across signed-in devices." />
+      {account && (
+        <section className="settings-card notification-settings">
+          <div className="settings-card-heading">
+            <div>
+              <p className="eyebrow">Android alerts</p>
+              <h2>Notifications</h2>
+            </div>
+            <span className={`notification-status ${account.notificationStatus}`}>{account.notificationStatus === "enabled" ? "On" : "Off"}</span>
+          </div>
+          <p>Get new household requests right away and a summary of today’s tasks at 8:00 AM Arizona time.</p>
+          {account.notificationStatus === "blocked" && <p className="notification-help">Chrome has blocked Atlas notifications. Open Atlas site settings in Chrome and change Notifications to Allow.</p>}
+          {account.notificationStatus === "unsupported" && <p className="notification-help">Install Atlas from Chrome to enable notifications on this device.</p>}
+          <button
+            type="button"
+            className={account.notificationStatus === "enabled" ? "secondary-button" : "primary-button"}
+            disabled={notificationBusy || account.notificationStatus === "unsupported" || account.notificationStatus === "blocked"}
+            onClick={toggleNotifications}
+          >
+            {notificationBusy ? "Working…" : account.notificationStatus === "enabled" ? "Turn off on this device" : "Enable notifications"}
+          </button>
+          {notificationMessage && <p className="notification-message" role="status">{notificationMessage}</p>}
+        </section>
+      )}
       {account && (
         <section className="settings-card">
           <h2>{account.householdName}</h2>
@@ -996,6 +1041,9 @@ export interface AtlasAccount {
   householdName: string;
   inviteCode: string;
   syncStatus: string;
+  notificationStatus: NotificationStatus;
+  onEnableNotifications: () => Promise<void>;
+  onDisableNotifications: () => Promise<void>;
   onSignOut: () => void;
 }
 
@@ -1003,10 +1051,11 @@ interface AtlasAppProps {
   initialState?: AtlasState;
   fixedProfile?: Profile;
   onStateChange?: (state: AtlasState) => void;
+  onThoughtCaptured?: (thought: Thought) => void;
   account?: AtlasAccount;
 }
 
-export default function AtlasApp({ initialState, fixedProfile, onStateChange, account }: AtlasAppProps) {
+export default function AtlasApp({ initialState, fixedProfile, onStateChange, onThoughtCaptured, account }: AtlasAppProps) {
   const [state, setState] = useState<AtlasState>(() => initialState
     ? { ...initialState, profile: fixedProfile ?? initialState.profile }
     : createSeedState());
@@ -1066,20 +1115,19 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
   }
 
   function capture(text: string, timing: Timing) {
-    updateState((current) => {
-      const prediction = inferThought(text, timing, current.corrections);
-      const urgent = timing === "Urgent" || prediction.timing === "Urgent";
-      const newThought: Thought = {
-        id: makeId("thought"),
-        text,
-        timing: prediction.timing,
-        urgent,
-        status: "Captured",
-        createdAt: new Date().toISOString(),
-        prediction,
-      };
-      return { ...current, thoughts: [...current.thoughts, newThought] };
-    });
+    const prediction = inferThought(text, timing, state.corrections);
+    const urgent = timing === "Urgent" || prediction.timing === "Urgent";
+    const newThought: Thought = {
+      id: makeId("thought"),
+      text,
+      timing: prediction.timing,
+      urgent,
+      status: "Captured",
+      createdAt: new Date().toISOString(),
+      prediction,
+    };
+    updateState((current) => ({ ...current, thoughts: [...current.thoughts, newThought] }));
+    onThoughtCaptured?.(newThought);
   }
 
   function correctPrediction(thought: Thought, prediction: Prediction) {

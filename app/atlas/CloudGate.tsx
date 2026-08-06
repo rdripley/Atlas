@@ -5,6 +5,13 @@ import AtlasApp from "./AtlasApp";
 import { createSeedState } from "./seed";
 import { loadState } from "./storage";
 import type { AtlasState, Profile } from "./types";
+import type { Thought } from "./types";
+import {
+  disableNotifications,
+  enableNotifications,
+  getNotificationStatus,
+  type NotificationStatus,
+} from "./notifications";
 
 type AuthMode = "sign-in" | "sign-up";
 type OnboardingMode = "create" | "join";
@@ -236,6 +243,7 @@ export default function CloudGate() {
   const [cloudState, setCloudState] = useState<AtlasState | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("Saved");
+  const [notificationStatus, setNotificationStatus] = useState<NotificationStatus>("disabled");
   const saveTimer = useRef<number | null>(null);
 
   const loadHousehold = useCallback(async (activeSession: Session) => {
@@ -360,6 +368,35 @@ export default function CloudGate() {
     };
   }, [membership, session]);
 
+  useEffect(() => {
+    if (!membership || !session) return;
+    getNotificationStatus()
+      .then(setNotificationStatus)
+      .catch(() => setNotificationStatus("disabled"));
+  }, [membership, session]);
+
+  const turnOnNotifications = useCallback(async () => {
+    if (!membership || !session) return;
+    const status = await enableNotifications(session.user.id, membership.householdId);
+    setNotificationStatus(status);
+  }, [membership, session]);
+
+  const turnOffNotifications = useCallback(async () => {
+    const status = await disableNotifications();
+    setNotificationStatus(status);
+  }, []);
+
+  const notifyHousehold = useCallback(async (thought: Thought) => {
+    if (!membership || !session) return;
+    await supabase.functions.invoke("atlas-notifications", {
+      body: {
+        action: "new_request",
+        title: thought.text.slice(0, 240),
+        urgent: thought.urgent,
+      },
+    });
+  }, [membership, session]);
+
   const saveCloudState = useCallback((nextState: AtlasState) => {
     if (!membership || !session) return;
     if (saveTimer.current !== null) window.clearTimeout(saveTimer.current);
@@ -385,12 +422,16 @@ export default function CloudGate() {
       initialState={cloudState}
       fixedProfile={membership.role}
       onStateChange={saveCloudState}
+      onThoughtCaptured={(thought) => { void notifyHousehold(thought); }}
       account={{
         displayName: membership.displayName,
         email: session.user.email ?? "",
         householdName: membership.householdName,
         inviteCode: membership.inviteCode,
         syncStatus,
+        notificationStatus,
+        onEnableNotifications: turnOnNotifications,
+        onDisableNotifications: turnOffNotifications,
         onSignOut: () => supabase.auth.signOut(),
       }}
     />

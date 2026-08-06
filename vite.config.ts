@@ -7,6 +7,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "app",
+      filename: "sw.js",
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "pwa-192.png", "pwa-512.png"],
       manifest: {
@@ -38,9 +41,9 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        cleanupOutdatedCaches: true,
-        navigateFallback: "/Atlas/index.html",
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,png,svg,webmanifest}"],
+        globIgnores: ["og.png"],
       },
     }),
   ],
