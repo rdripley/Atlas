@@ -379,7 +379,7 @@ function InboxScreen({
 }: {
   thoughts: Thought[];
   onPrediction: (thought: Thought, prediction: Prediction) => void;
-  onPlan: (thought: Thought, plannedFor: string | null) => void;
+  onPlan: (thought: Thought, plannedFor: string | null, openPlan?: boolean) => void;
 }) {
   const pending = thoughts.filter((thought) => thought.status === "Captured" || thought.status === "Seen");
   return (
@@ -444,7 +444,7 @@ function InboxScheduleActions({
   onPlan,
 }: {
   thought: Thought;
-  onPlan: (thought: Thought, plannedFor: string | null) => void;
+  onPlan: (thought: Thought, plannedFor: string | null, openPlan?: boolean) => void;
 }) {
   type ScheduleChoice = "today" | "tomorrow" | "date" | "whenever";
   const inferredChoice: ScheduleChoice =
@@ -496,13 +496,22 @@ function InboxScheduleActions({
           </label>
         )}
       </div>
-      <button
-        className="primary-button"
-        disabled={choice === "date" && !chosenDate}
-        onClick={() => onPlan(thought, plannedFor)}
-      >
-        {buttonLabel}
-      </button>
+      <div className="schedule-submit-actions">
+        <button
+          className="primary-button"
+          disabled={choice === "date" && !chosenDate}
+          onClick={() => onPlan(thought, plannedFor)}
+        >
+          {buttonLabel}
+        </button>
+        <button
+          className="secondary-button"
+          disabled={choice === "date" && !chosenDate}
+          onClick={() => onPlan(thought, plannedFor, true)}
+        >
+          Add &amp; view plan
+        </button>
+      </div>
     </div>
   );
 }
@@ -1085,7 +1094,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
     setToast("Correction saved. Atlas will reuse it for similar inputs.");
   }
 
-  function addThoughtToPlan(thought: Thought, plannedFor: string | null) {
+  function addThoughtToPlan(thought: Thought, plannedFor: string | null, openPlan = false) {
     const today = localDateKey();
     const tomorrow = localDateKey(1);
     const section =
@@ -1123,7 +1132,7 @@ export default function AtlasApp({ initialState, fixedProfile, onStateChange, ac
             ? "tomorrow"
             : displayDate(plannedFor);
     setToast(`${task.title} added to ${destination}.`);
-    navigate("plan");
+    if (openPlan) navigate("plan");
   }
 
   function startTask(task: Task) {
